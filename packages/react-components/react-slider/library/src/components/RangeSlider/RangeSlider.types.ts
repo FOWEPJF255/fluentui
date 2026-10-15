@@ -3,12 +3,12 @@ import type { ComponentProps, ComponentState, EventData, EventHandler, Slot } fr
 
 export type RangeSliderValue = {
   /**
-   * Lower value for the range.
+   * The start value: the smaller end of the selected range, whatever the orientation or text direction.
    */
   start: number;
 
   /**
-   * Upper value for the range.
+   * The end value: the larger end of the selected range.
    */
   end: number;
 };
@@ -33,17 +33,18 @@ export type RangeSliderSlots = {
   rail: NonNullable<Slot<'div'>>;
 
   /**
-   * Visual-only thumb that represents the minimum value. Focus and interaction come from the nested input.
+   * Visual-only thumb that represents the start value. Focus and interaction come from the nested input.
    */
   startThumb: NonNullable<Slot<'div'>>;
 
   /**
-   * Visual-only thumb that represents the maximum value. Focus and interaction come from the nested input.
+   * Visual-only thumb that represents the end value. Focus and interaction come from the nested input.
    */
   endThumb: NonNullable<Slot<'div'>>;
 
   /**
-   * Visually hidden `<input type="range">` that owns the lower value for accessibility and forms.
+   * Transparent `<input type="range">` layered over the start thumb. It owns the start value for keyboard,
+   * assistive technology and forms. Set `disabled` on this slot to disable only the start thumb.
    */
   startInput: NonNullable<Slot<'input'>> & {
     /**
@@ -56,7 +57,8 @@ export type RangeSliderSlots = {
   };
 
   /**
-   * Visually hidden `<input type="range">` that owns the upper value for accessibility and forms.
+   * Transparent `<input type="range">` layered over the end thumb. It owns the end value for keyboard,
+   * assistive technology and forms. Set `disabled` on this slot to disable only the end thumb.
    */
   endInput: NonNullable<Slot<'input'>> & {
     /**
@@ -72,23 +74,32 @@ export type RangeSliderSlots = {
 /**
  * RangeSlider Props.
  *
- * `className`, `style`, `id` and event handlers apply to the root group. Form props (`name`, `form`, `required`)
- * and `aria-describedby`/`aria-invalid` apply to both inputs, and `aria-label`/`aria-labelledby` label both the
- * group and, unless a slot provides its own label, each input. Props that describe a single thumb, such as a
- * per-thumb label or `aria-valuetext`, go on the `startInput` and `endInput` slots; `aria-valuetext`,
- * `aria-valuenow`, `aria-valuemin` and `aria-valuemax` set on the RangeSlider itself are ignored.
+ * `className`, `style`, `id`, `ref` and event handlers apply to the root group; each input is reachable through
+ * its slot's `ref`. Form props (`name`, `form`, `required`) and `aria-describedby`/`aria-invalid` apply to both
+ * inputs, so a shared `name` submits both values, start first. `aria-label`/`aria-labelledby` label the group
+ * and, unless a slot provides its own label, each input. Props that describe a single thumb, such as a per-thumb
+ * label, `aria-valuetext` or `disabled`, go on the `startInput` and `endInput` slots.
  */
 export type RangeSliderProps = Omit<
   ComponentProps<Partial<RangeSliderSlots>, 'startInput' | 'endInput'>,
-  'defaultValue' | 'onChange' | 'size' | 'value'
+  | 'defaultValue'
+  | 'onChange'
+  | 'size'
+  | 'value'
+  | 'aria-valuetext'
+  | 'aria-valuenow'
+  | 'aria-valuemin'
+  | 'aria-valuemax'
 > & {
   /**
    * The starting value for an uncontrolled RangeSlider.
+   * @default `{ start: min, end: max }`, the full range
    */
   defaultValue?: RangeSliderValue;
 
   /**
-   * Whether the RangeSlider is disabled.
+   * Whether the whole RangeSlider is disabled. It takes precedence over `disabled` on the `startInput` and
+   * `endInput` slots, which disable a single thumb.
    * @default `false`
    */
   disabled?: boolean;
@@ -118,7 +129,7 @@ export type RangeSliderProps = Omit<
   step?: number;
 
   /**
-   * Controlled value for the RangeSlider.
+   * Controlled value for the RangeSlider. A value with `start` greater than `end` is displayed sorted.
    */
   value?: RangeSliderValue;
 
@@ -129,7 +140,8 @@ export type RangeSliderProps = Omit<
   vertical?: boolean;
 
   /**
-   * Fires when the slider values change.
+   * Fires when either value changes, with `start` never greater than `end`. `data.type` is `'change'` for
+   * keyboard and assistive technology input, and `'pointer'` for pointer and touch input on the rail.
    */
   onChange?: EventHandler<RangeSliderOnChangeData>;
 };
@@ -139,9 +151,30 @@ export type RangeSliderState = ComponentState<RangeSliderSlots> &
     value: RangeSliderValue;
 
     /**
-     * Tracks which thumb was last interacted with. When thumbs overlap,
-     * this determines which thumb is visually elevated and receives pointer events.
+     * Whether the start thumb is disabled, by the whole RangeSlider or by its own slot.
+     */
+    startDisabled: boolean;
+
+    /**
+     * Whether the end thumb is disabled, by the whole RangeSlider or by its own slot.
+     */
+    endDisabled: boolean;
+
+    /**
+     * The thumb drawn on top when the thumbs overlap, and moved by a press exactly on them.
+     * It is the last thumb interacted with, or the enabled thumb when the other one is disabled.
      * @default 'start'
      */
     activeThumb: 'start' | 'end';
   };
+
+/**
+ * RangeSlider base props, excluding design-related props like size.
+ * Note: vertical is kept as it affects aria-orientation behavior.
+ */
+export type RangeSliderBaseProps = Omit<RangeSliderProps, 'size'>;
+
+/**
+ * RangeSlider base state, excluding design-related state like size.
+ */
+export type RangeSliderBaseState = Omit<RangeSliderState, 'size'>;

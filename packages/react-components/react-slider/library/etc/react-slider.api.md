@@ -10,12 +10,18 @@ import type { EventData } from '@fluentui/react-utilities';
 import type { EventHandler } from '@fluentui/react-utilities';
 import type { ForwardRefComponent } from '@fluentui/react-utilities';
 import type { JSXElement } from '@fluentui/react-utilities';
-import type * as React_2 from 'react';
+import * as React_2 from 'react';
 import type { Slot } from '@fluentui/react-utilities';
 import type { SlotClassNames } from '@fluentui/react-utilities';
 
 // @public
 export const RangeSlider: ForwardRefComponent<RangeSliderProps>;
+
+// @public
+export type RangeSliderBaseProps = Omit<RangeSliderProps, 'size'>;
+
+// @public
+export type RangeSliderBaseState = Omit<RangeSliderState, 'size'>;
 
 // @public (undocumented)
 export const rangeSliderClassNames: SlotClassNames<RangeSliderSlots>;
@@ -24,8 +30,8 @@ export const rangeSliderClassNames: SlotClassNames<RangeSliderSlots>;
 export const rangeSliderCSSVars: {
     rangeSliderDirectionVar: string;
     rangeSliderInnerThumbRadiusVar: string;
-    rangeSliderLowerProgressVar: string;
-    rangeSliderUpperProgressVar: string;
+    rangeSliderStartProgressVar: string;
+    rangeSliderEndProgressVar: string;
     rangeSliderProgressColorVar: string;
     rangeSliderRailSizeVar: string;
     rangeSliderRailColorVar: string;
@@ -39,8 +45,8 @@ export type RangeSliderOnChangeData = (EventData<'change', React_2.ChangeEvent<H
     value: RangeSliderValue;
 };
 
-// @public (undocumented)
-export type RangeSliderProps = Omit<ComponentProps<Partial<RangeSliderSlots>, 'startInput' | 'endInput'>, 'defaultValue' | 'onChange' | 'size' | 'value'> & {
+// @public
+export type RangeSliderProps = Omit<ComponentProps<Partial<RangeSliderSlots>, 'startInput' | 'endInput'>, 'defaultValue' | 'onChange' | 'size' | 'value' | 'aria-valuetext' | 'aria-valuenow' | 'aria-valuemin' | 'aria-valuemax'> & {
     defaultValue?: RangeSliderValue;
     disabled?: boolean;
     max?: number;
@@ -69,6 +75,8 @@ export type RangeSliderSlots = {
 // @public (undocumented)
 export type RangeSliderState = ComponentState<RangeSliderSlots> & Pick<RangeSliderProps, 'disabled' | 'size' | 'vertical'> & {
     value: RangeSliderValue;
+    startDisabled: boolean;
+    endDisabled: boolean;
     activeThumb: 'start' | 'end';
 };
 
@@ -79,7 +87,7 @@ export type RangeSliderValue = {
 };
 
 // @public
-export const renderRangeSlider_unstable: (state: RangeSliderState) => JSXElement;
+export const renderRangeSlider_unstable: (state: RangeSliderBaseState) => JSXElement;
 
 // @public
 export const renderSlider_unstable: (state: SliderBaseState) => JSXElement;
@@ -143,8 +151,11 @@ export type SliderState = ComponentState<SliderSlots> & Pick<SliderProps, 'disab
 // @public
 export const useRangeSlider_unstable: (props: RangeSliderProps, ref: React_2.Ref<HTMLDivElement>) => RangeSliderState;
 
+// @public
+export const useRangeSliderBase_unstable: (props: RangeSliderBaseProps, ref: React_2.Ref<HTMLDivElement>) => RangeSliderBaseState;
+
 // @public (undocumented)
-export const useRangeSliderState_unstable: (state: RangeSliderState, props: RangeSliderProps) => RangeSliderState;
+export const useRangeSliderState_unstable: (state: RangeSliderBaseState, props: RangeSliderBaseProps) => RangeSliderBaseState;
 
 // @public (undocumented)
 export const useRangeSliderStyles_unstable: (state: RangeSliderState) => RangeSliderState;

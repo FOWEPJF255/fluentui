@@ -1,10 +1,12 @@
 import * as React from 'react';
-import { act, render, screen, fireEvent } from '@testing-library/react';
+import { act, render, renderHook, screen, fireEvent } from '@testing-library/react';
 import { Field } from '@fluentui/react-field';
 import { Provider_unstable as Provider } from '@fluentui/react-shared-contexts';
 import { resetIdsForTests } from '@fluentui/react-utilities';
 import { isConformant } from '../../testing/isConformant';
 import { RangeSlider } from './RangeSlider';
+import { useRangeSlider_unstable, useRangeSliderBase_unstable } from './useRangeSlider';
+import type { RangeSliderProps } from './RangeSlider.types';
 
 describe('RangeSlider', () => {
   isConformant({
@@ -15,7 +17,15 @@ describe('RangeSlider', () => {
     disabledTests: ['primary-slot-gets-native-props'],
   });
 
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    // Most tests render without per-thumb labels, which logs a development warning
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
   afterEach(() => {
+    warnSpy.mockRestore();
     resetIdsForTests();
   });
 
@@ -94,37 +104,35 @@ describe('RangeSlider', () => {
     expect(sliders[1].getAttribute('step')).toEqual('5');
   });
 
-  it('constrains startInput max to the upper value', () => {
+  it('constrains startInput max to the end value', () => {
     render(<RangeSlider defaultValue={{ start: 20, end: 60 }} min={0} max={100} />);
     const sliders = screen.getAllByRole('slider');
     expect(sliders[0].getAttribute('max')).toEqual('60');
   });
 
-  it('constrains endInput min to the lower value', () => {
+  it('constrains endInput min to the start value', () => {
     render(<RangeSlider defaultValue={{ start: 20, end: 60 }} min={0} max={100} />);
     const sliders = screen.getAllByRole('slider');
     expect(sliders[1].getAttribute('min')).toEqual('20');
   });
 
-  it('aligns endInput min to the step grid when the lower value is off-step', () => {
+  it('aligns endInput min to the step grid when the start value is off-step', () => {
     render(<RangeSlider defaultValue={{ start: 3, end: 50 }} step={5} min={0} max={100} />);
     const sliders = screen.getAllByRole('slider');
     expect(sliders[1].getAttribute('min')).toEqual('0');
   });
 
-  it('snaps the default end value to the step', () => {
-    const { unmount } = render(<RangeSlider min={0} max={50} step={20} />);
-    expect(screen.getAllByRole('slider')[1].getAttribute('value')).toEqual('20');
-    unmount();
-
-    render(<RangeSlider min={0} max={7} />);
-    expect(screen.getAllByRole('slider')[1].getAttribute('value')).toEqual('1');
+  it('selects the full range when uncontrolled without a defaultValue', () => {
+    render(<RangeSlider min={1000} max={5000} step={500} />);
+    const sliders = screen.getAllByRole('slider');
+    expect(sliders[0].getAttribute('value')).toEqual('1000');
+    expect(sliders[1].getAttribute('value')).toEqual('5000');
   });
 
   it('orders values correctly when start > end', () => {
     render(<RangeSlider defaultValue={{ start: 80, end: 20 }} min={0} max={100} />);
     const sliders = screen.getAllByRole('slider');
-    // Values should be sorted: lower=20, upper=80
+    // Values should be sorted: start=20, end=80
     expect(sliders[0].getAttribute('value')).toEqual('20');
     expect(sliders[1].getAttribute('value')).toEqual('80');
   });
@@ -262,6 +270,132 @@ describe('RangeSlider', () => {
     expect(sliders[1].getAttribute('aria-describedby')).toEqual(sliders[0].getAttribute('aria-describedby'));
   });
 
+  describe('disabling a single thumb', () => {
+    it('keeps a slot-disabled thumb focusable with aria-disabled and leaves the other thumb enabled', () => {
+      render(<RangeSlider defaultValue={{ start: 20, end: 80 }} name="price" startInput={{ disabled: true }} />);
+      const [start, end] = screen.getAllByRole('slider') as HTMLInputElement[];
+
+      expect(start.disabled).toBe(false);
+      expect(start.getAttribute('aria-disabled')).toEqual('true');
+      expect(end.disabled).toBe(false);
+      expect(end.hasAttribute('aria-disabled')).toBe(false);
+
+      act(() => start.focus());
+      expect(document.activeElement).toBe(start);
+    });
+
+    it('ignores input changes on a slot-disabled thumb', () => {
+      const onChange = jest.fn();
+      render(<RangeSlider defaultValue={{ start: 20, end: 80 }} endInput={{ disabled: true }} onChange={onChange} />);
+      const [start, end] = screen.getAllByRole('slider');
+
+      fireEvent.change(end, { target: { value: '90' } });
+      expect(onChange).not.toHaveBeenCalled();
+
+      fireEvent.change(start, { target: { value: '30' } });
+      expect(onChange.mock.calls[0][1].value).toEqual({ start: 30, end: 80 });
+    });
+
+    it('submits the value of a slot-disabled thumb with the form', () => {
+      const { container } = render(
+        <form>
+          <RangeSlider defaultValue={{ start: 20, end: 80 }} name="price" startInput={{ disabled: true }} />
+        </form>,
+      );
+      const formData = new FormData(container.querySelector('form')!);
+      expect(formData.getAll('price')).toEqual(['20', '80']);
+    });
+
+    it('lets the whole-slider disabled win over a slot that is not disabled', () => {
+      render(<RangeSlider disabled defaultValue={{ start: 20, end: 80 }} startInput={{ disabled: false }} />);
+      const sliders = screen.getAllByRole('slider') as HTMLInputElement[];
+
+      expect(sliders.map(slider => slider.disabled)).toEqual([true, true]);
+      expect(sliders.map(slider => slider.hasAttribute('aria-disabled'))).toEqual([false, false]);
+    });
+
+    it('puts the enabled thumb on top when overlapping thumbs include a disabled one', () => {
+      const { result } = renderHook(() =>
+        useRangeSlider_unstable(
+          { defaultValue: { start: 50, end: 50 }, startInput: { disabled: true } },
+          React.createRef(),
+        ),
+      );
+
+      // Focusing the disabled start thumb must not bring it on top
+      act(() => result.current.startInput.onFocus?.({} as React.FocusEvent<HTMLInputElement>));
+
+      expect(result.current.activeThumb).toBe('end');
+      expect(result.current.startDisabled).toBe(true);
+      expect(result.current.endDisabled).toBe(false);
+    });
+  });
+
+  describe('base hook', () => {
+    it('returns state without design props such as size', () => {
+      const { result } = renderHook(() =>
+        useRangeSliderBase_unstable({ defaultValue: { start: 20, end: 80 } }, React.createRef()),
+      );
+
+      expect(result.current).not.toHaveProperty('size');
+      expect(result.current.value).toEqual({ start: 20, end: 80 });
+    });
+
+    it('adds size in the styled hook', () => {
+      const { result } = renderHook(() => useRangeSlider_unstable({ size: 'small' }, React.createRef()));
+
+      expect(result.current.size).toBe('small');
+    });
+  });
+
+  describe('development warnings', () => {
+    it('warns once when a thumb has no label of its own', () => {
+      const { rerender } = render(<RangeSlider aria-label="Price" startInput={{ 'aria-label': 'Minimum price' }} />);
+      rerender(<RangeSlider aria-label="Price" startInput={{ 'aria-label': 'Minimum price' }} />);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('the end thumb has no label of its own');
+    });
+
+    it('warns when both thumbs only share the Field label', () => {
+      render(
+        <Field label="Price">
+          <RangeSlider />
+        </Field>,
+      );
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('the start and end thumbs have no labels of their own');
+    });
+
+    it('does not warn when each thumb has its own label', () => {
+      render(
+        <RangeSlider startInput={{ 'aria-label': 'Minimum price' }} endInput={{ 'aria-labelledby': 'max-label' }} />,
+      );
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('warns about single-thumb value props set on the RangeSlider', () => {
+      render(
+        <RangeSlider
+          aria-valuetext="ignored"
+          startInput={{ 'aria-label': 'Minimum price' }}
+          endInput={{ 'aria-label': 'Maximum price' }}
+        />,
+      );
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('aria-valuetext describe a single thumb');
+    });
+
+    it('does not accept single-thumb value props in the props type', () => {
+      // @ts-expect-error -- aria-valuetext describes a single thumb; set it on a slot instead
+      const props: RangeSliderProps = { 'aria-valuetext': 'ignored' };
+      expect(props).toBeDefined();
+    });
+  });
+
   // Keyboard (native input change) tests
   describe('input changes', () => {
     it('calls onChange when the start input changes', () => {
@@ -275,7 +409,7 @@ describe('RangeSlider', () => {
       );
     });
 
-    it('clamps the end input to the lower value', () => {
+    it('clamps the end input to the start value', () => {
       const onChange = jest.fn();
       render(<RangeSlider defaultValue={{ start: 3, end: 50 }} step={5} onChange={onChange} />);
       fireEvent.change(screen.getAllByRole('slider')[1], { target: { value: '0' } });
@@ -484,6 +618,43 @@ describe('RangeSlider', () => {
       dispatchPointer(root, 'pointerdown', { clientX: 70, clientY: 15 });
 
       expect(onChange.mock.calls[0][1].value).toEqual({ start: 30, end: 80 });
+    });
+
+    it('moves the enabled thumb, stopped at the disabled one, when pressing near a disabled thumb', () => {
+      const onChange = jest.fn();
+      const { container } = render(
+        <RangeSlider
+          defaultValue={{ start: 20, end: 80 }}
+          min={0}
+          max={100}
+          startInput={{ disabled: true }}
+          onChange={onChange}
+        />,
+      );
+      const root = container.firstElementChild as HTMLElement;
+
+      dispatchPointer(root, 'pointerdown', { clientX: 10, clientY: 15 });
+
+      expect(onChange.mock.calls[0][1].value).toEqual({ start: 20, end: 20 });
+      expect(document.activeElement).toBe(screen.getAllByRole('slider')[1]);
+    });
+
+    it('does not move when both thumbs are disabled through their slots', () => {
+      const onChange = jest.fn();
+      const { container } = render(
+        <RangeSlider
+          defaultValue={{ start: 20, end: 80 }}
+          min={0}
+          max={100}
+          startInput={{ disabled: true }}
+          endInput={{ disabled: true }}
+          onChange={onChange}
+        />,
+      );
+
+      dispatchPointer(container.firstElementChild as HTMLElement, 'pointerdown', { clientX: 30, clientY: 15 });
+
+      expect(onChange).not.toHaveBeenCalled();
     });
 
     it('stops updating on pointerCancel', () => {

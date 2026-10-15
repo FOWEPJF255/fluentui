@@ -1,11 +1,17 @@
 'use client';
 
-import type * as React from 'react';
+import * as React from 'react';
 import { useFieldControlProps_unstable } from '@fluentui/react-field';
 import { getIntrinsicElementProps, slot, useId, useMergedRefs } from '@fluentui/react-utilities';
 import { useFocusWithin } from '@fluentui/react-tabster';
 import { useRangeSliderState_unstable } from './useRangeSliderState';
-import type { RangeSliderProps, RangeSliderSlots, RangeSliderState } from './RangeSlider.types';
+import type {
+  RangeSliderBaseProps,
+  RangeSliderBaseState,
+  RangeSliderProps,
+  RangeSliderSlots,
+  RangeSliderState,
+} from './RangeSlider.types';
 
 /**
  * Props that describe the value of a single thumb, so they only make sense on each input individually.
@@ -40,11 +46,39 @@ type RootNativeProps = React.HTMLAttributes<HTMLDivElement> & { as?: 'div'; name
  * @param ref - reference to root HTMLDivElement of RangeSlider
  */
 export const useRangeSlider_unstable = (props: RangeSliderProps, ref: React.Ref<HTMLDivElement>): RangeSliderState => {
+  const { size = 'medium', ...baseProps } = props;
+
+  const baseState = useRangeSliderBase_unstable(baseProps, ref);
+
+  // Focus-within tracking drives the thumbs' focus ring styles
+  // eslint-disable-next-line react-hooks/immutability
+  baseState.startThumb.ref = useMergedRefs(baseState.startThumb.ref, useFocusWithin<HTMLDivElement>());
+  // eslint-disable-next-line react-hooks/immutability
+  baseState.endThumb.ref = useMergedRefs(baseState.endThumb.ref, useFocusWithin<HTMLDivElement>());
+
+  return {
+    ...baseState,
+    size,
+  };
+};
+
+/**
+ * Base hook for RangeSlider component, which manages state related to slots structure, ARIA attributes,
+ * pointer and keyboard handling, and controlled/uncontrolled value state. It has no styling or focus-ring concerns.
+ *
+ * @param props - User provided props to the RangeSlider component.
+ * @param ref - User provided ref to be passed to the RangeSlider root element.
+ */
+export const useRangeSliderBase_unstable = (
+  props: RangeSliderBaseProps,
+  ref: React.Ref<HTMLDivElement>,
+): RangeSliderBaseState => {
   // supportsLabelFor is false because RangeSlider has two <input> elements, so htmlFor cannot target both.
   // The Field label is applied to the root group and, unless a slot provides its own label, to both inputs.
+  // eslint-disable-next-line react-hooks/immutability
   props = useFieldControlProps_unstable(props, { supportsLabelFor: false });
 
-  const { disabled, vertical = false, size = 'medium', root, rail, startThumb, endThumb, startInput, endInput } = props;
+  const { disabled, vertical = false, root, rail, startThumb, endThumb, startInput, endInput } = props;
 
   // Native props that aren't input-specific go to the root, so event handlers such as onPointerDown work
   // (the inputs don't receive pointer events) and `id` stays unique.
@@ -66,10 +100,13 @@ export const useRangeSlider_unstable = (props: RangeSliderProps, ref: React.Ref<
     }
   }
 
+  const hasOwnLabel = (inputSlot: InputSlotProps) =>
+    typeof inputSlot === 'object' && !!inputSlot && !!(inputSlot['aria-label'] || inputSlot['aria-labelledby']);
+
   // An input falls back to the RangeSlider's label only when its slot doesn't provide one,
   // because aria-labelledby would otherwise take precedence over a per-thumb aria-label.
   const getLabelFallback = (inputSlot: InputSlotProps) => {
-    if (typeof inputSlot === 'object' && inputSlot && (inputSlot['aria-label'] || inputSlot['aria-labelledby'])) {
+    if (hasOwnLabel(inputSlot)) {
       return {};
     }
     return { 'aria-label': props['aria-label'], 'aria-labelledby': props['aria-labelledby'] };
@@ -87,10 +124,11 @@ export const useRangeSlider_unstable = (props: RangeSliderProps, ref: React.Ref<
     'aria-orientation': vertical ? ('vertical' as const) : ('horizontal' as const),
   });
 
-  const state: RangeSliderState = {
+  const state: RangeSliderBaseState = {
     disabled,
-    size,
     vertical,
+    startDisabled: false,
+    endDisabled: false,
     activeThumb: 'start',
     value: { start: 0, end: 0 },
     components: {
@@ -118,10 +156,46 @@ export const useRangeSlider_unstable = (props: RangeSliderProps, ref: React.Ref<
     }),
   };
 
-  state.startThumb.ref = useMergedRefs(state.startThumb.ref, useFocusWithin<HTMLDivElement>());
-  state.endThumb.ref = useMergedRefs(state.endThumb.ref, useFocusWithin<HTMLDivElement>());
-
   useRangeSliderState_unstable(state, props);
+
+  if (process.env.NODE_ENV !== 'production') {
+    const startUnlabelled = !hasOwnLabel(startInput);
+    const endUnlabelled = !hasOwnLabel(endInput);
+    const unlabelledThumbs =
+      startUnlabelled && endUnlabelled
+        ? 'start and end thumbs have no labels of their own'
+        : startUnlabelled
+        ? 'start thumb has no label of its own'
+        : endUnlabelled
+        ? 'end thumb has no label of its own'
+        : '';
+    const ignoredPropNames = perThumbPropNames
+      .filter(propName => (props as Record<string, unknown>)[propName] !== undefined)
+      .join(', ');
+
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- "process.env" does not change in runtime
+    React.useEffect(() => {
+      if (unlabelledThumbs) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[@fluentui/react-slider] RangeSlider: the ${unlabelledThumbs}, so screen reader users ` +
+            'cannot tell the thumbs apart. Set "aria-label" or "aria-labelledby" on the "startInput" ' +
+            'and "endInput" slots.',
+        );
+      }
+    }, [unlabelledThumbs]);
+
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- "process.env" does not change in runtime
+    React.useEffect(() => {
+      if (ignoredPropNames) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[@fluentui/react-slider] RangeSlider: ${ignoredPropNames} describe a single thumb and are ignored on ` +
+            'RangeSlider. Set them on the "startInput" or "endInput" slot instead.',
+        );
+      }
+    }, [ignoredPropNames]);
+  }
 
   return state;
 };
