@@ -3,6 +3,7 @@
 import type * as React from 'react';
 import {
   getPartitionedNativeProps,
+  getPercent,
   useId,
   slot,
   useControllableState,
@@ -18,7 +19,6 @@ import type {
 } from './ColorSlider.types';
 import { useColorPickerContextValue_unstable } from '../../contexts/colorPicker';
 import { MIN, HUE_MAX, MAX as COLOR_MAX } from '../../utils/constants';
-import { getPercent } from '../../utils/getPercent';
 import { createHsvColor } from '../../utils/createHsvColor';
 import { clampValue, type ChannelActions, adjustChannel } from '../../utils/adjustChannel';
 import type { HsvColor } from '../../types/color';
